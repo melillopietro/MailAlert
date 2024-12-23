@@ -1,0 +1,10 @@
+{
+  "smtpServer": " ",
+  "smtpPort": 587,
+  "smtpUser": " ",
+  "encryptedPasswordPath": "C:\\MailAlert\\EncryptedPassword.txt",
+  "from": " ",
+  "to": [
+    " "
+  ]
+}

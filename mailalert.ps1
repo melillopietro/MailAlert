@@ -1,14 +1,35 @@
-# Configura i parametri SMTP e le credenziali
-$smtpServer = "smtp.gmail.com"
-$smtpPort = 587
-$smtpUser = "tuoindirizzo@gmail.com"  # Sostituisci con il tuo indirizzo email
-$smtpPassword = Read-Host "Inserisci la password (non visibile)" -AsSecureString
+# Configura il percorso del file JSON
+$configPath = "C:\MailAlert\Config.json"
+$config = Get-Content -Path $configPath | ConvertFrom-Json
 
-# Configura i dettagli dell'email
-$from = "tuoindirizzo@gmail.com" # Sostituisci con il tuo indirizzo email
-$to = @("destinatario@gmail.com") # Sostituisci con gli indirizzi dei destinatari
+# Leggi i parametri dal file JSON
+$smtpServer = $config.smtpServer
+$smtpPort = $config.smtpPort
+$smtpUser = $config.smtpUser
+$encryptedPasswordPath = $config.encryptedPasswordPath
+$from = $config.from
+$to = $config.to
 $subject = "Alert"
 $bodyTemplate = "Connessione remota attiva. Ora di invio: {0}"
+
+# Decifra la password crittografata
+$encryptedPassword = Get-Content -Path $encryptedPasswordPath
+$smtpPassword = $encryptedPassword | ConvertTo-SecureString
+
+# Percorso file di log
+$logFilePath = "C:\MailAlert\Log\LogFile_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+
+# Funzione per registrare log
+function Log-Message {
+    param (
+        [string]$message,
+        [string]$level = "INFO"
+    )
+    $timestamp = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    $logEntry = "$timestamp [$level] - $message"
+    Write-Host $logEntry
+    Add-Content -Path $logFilePath -Value $logEntry
+}
 
 # Funzione per inviare l'email
 function Send-AlertEmail {
@@ -23,11 +44,13 @@ function Send-AlertEmail {
         [string]$bodyTemplate
     )
     try {
+        Log-Message -message "Tentativo di connessione al server SMTP $smtpServer sulla porta $smtpPort."
         $currentDateTime = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         $body = [string]::Format($bodyTemplate, $currentDateTime)
 
         $smtpClient = New-Object System.Net.Mail.SmtpClient($smtpServer, $smtpPort)
         $smtpClient.EnableSsl = $true
+        $smtpClient.Timeout = 60000  # Timeout di 60 secondi
         $smtpClient.Credentials = New-Object System.Net.NetworkCredential($smtpUser, $smtpPassword)
 
         $mailMessage = New-Object System.Net.Mail.MailMessage
@@ -37,14 +60,23 @@ function Send-AlertEmail {
         $mailMessage.Body = $body
 
         $smtpClient.Send($mailMessage)
-        Write-Host "Email inviata con successo alle $currentDateTime."
+        Log-Message -message "Email inviata con successo a $to alle $currentDateTime."
     } catch {
-        Write-Warning "Errore nell'invio dell'email: $_"
+        $errorMessage = "Errore nell'invio dell'email: $_"
+        Log-Message -message $errorMessage -level "ERROR"
     }
 }
 
-# Ciclo per inviare un'email ogni ora
-while ($true) {
+# Esegui il controllo della configurazione prima di iniziare il ciclo
+if ($smtpServer -and $smtpPort -and $smtpUser -and $smtpPassword -and $from -and $to) {
+    # Invia immediatamente la prima email
     Send-AlertEmail -smtpServer $smtpServer -smtpPort $smtpPort -smtpUser $smtpUser -smtpPassword $smtpPassword -from $from -to $to -subject $subject -bodyTemplate $bodyTemplate
-    Start-Sleep -Seconds 3600  # Attendi un'ora prima di inviare la prossima email
+
+    # Ciclo per inviare un'email ogni ora
+    while ($true) {
+        Start-Sleep -Seconds 3600  # Attendi un'ora prima di inviare la prossima email
+        Send-AlertEmail -smtpServer $smtpServer -smtpPort $smtpPort -smtpUser $smtpUser -smtpPassword $smtpPassword -from $from -to $to -subject $subject -bodyTemplate $bodyTemplate
+    }
+} else {
+    Log-Message -message "Errore nella configurazione. Controlla i parametri e riprova." -level "ERROR"
 }

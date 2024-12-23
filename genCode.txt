@@ -1,0 +1,1 @@
+"Password" | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File -FilePath "C:\MailAlert\EncryptedPassword.txt"
